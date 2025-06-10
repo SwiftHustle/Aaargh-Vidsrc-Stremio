@@ -2,23 +2,31 @@ const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
 // Dynamic import for node-fetch in CommonJS environments
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-// Configure the local API port and TMDB API key
+// Configure the local API port
 const PORT = 300;
-const TMDB_KEY = 'dfedf6eae16bbcbbda85f1ced97427e2';
 
-// Add-on manifest
+// Create the addon manifest with SDK's built-in configuration
 const manifest = {
-  id: 'org.stremio.localhost',
-  version: '1.0.0',
+  id: 'org.stremio.vidsrc.aaargh',
+  version: '1.2.0',
   name: 'Aaargh',
-  description: 'Fetch streams from a local HTTP API using TMDB IDs',
+  description: 'Fetches HLS streams from Vidsrc and similar platforms. BYO TMDB API Key',
   resources: ['stream'],
   types: ['movie', 'series'],
-  catalogs: []
+  catalogs: [],
+  behaviorHints: {
+    configurable: true,
+    configurationRequired: true
+  },
+  config: [
+    {
+      key: 'tmdb_token',
+      type: 'password',
+      title: 'TMDB API Token',
+      required: true
+    }
+  ]
 };
-
-// Initialize the add-on builder
-const builder = new addonBuilder(manifest);
 
 // Helper: map local API JSON to Stremio streams
 function mapApiToStreams(data) {
@@ -47,9 +55,19 @@ function mapApiToStreams(data) {
   return streams;
 }
 
-// Define the stream handler
-builder.defineStreamHandler(async ({ type, id }) => {
-  console.log('Received stream request:', { type, id });
+// Create the addon builder
+const builder = new addonBuilder(manifest);
+
+// Define the stream handler - SDK automatically passes user config
+builder.defineStreamHandler(async ({ type, id, config }) => {
+  console.log('Received stream request:', { type, id, config });
+
+  // Get TMDB token from user config (SDK automatically provides this)
+  const TMDB_KEY = config?.tmdb_token;
+  if (!TMDB_KEY) {
+    console.error('No TMDB token provided in config');
+    return { streams: [] };
+  }
 
   // Parse IMDB ID and S/E for series
   const parts = id.split(':');
@@ -79,8 +97,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
   // Fetch from local API
   const apiUrl = type === 'movie'
-    ? `http://localhost:3000/movie/${tmdbId}`
-    : `http://localhost:3000/tv/${tmdbId}?s=${season}&e=${episode}`;
+    ? `https://tmbd-serverless.vercel.app/api/movie/${tmdbId}?api_key=${TMDB_KEY}`
+    : `https://tmbd-serverless.vercel.app/api/tv/${tmdbId}?s=${season}&e=${episode}&api_key=${TMDB_KEY}`;
   console.log('Fetching local API:', apiUrl);
 
   try {
@@ -95,7 +113,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-// Start server
-serveHTTP(builder.getInterface(), { port: PORT, address: '0.0.0.0' })
-  .then(() => console.log(`Addon running at http://0.0.0.0:${PORT}/manifest.json (accessible on your LAN)`))
-  .catch(err => console.error('Server error:', err));
+// Use the SDK's built-in HTTP server with configuration support
+serveHTTP(builder.getInterface(), { port: PORT }, () => {
+  console.log(`Addon running at http://0.0.0.0:${PORT}/manifest.json (accessible on your LAN)`);
+  console.log(`Configuration page: http://0.0.0.0:${PORT}/configure`);
+});
