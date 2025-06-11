@@ -2,8 +2,8 @@ const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
 // Dynamic import for node-fetch in CommonJS environments
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-// Configure the local API port
-const PORT = 300;
+// Configure the port - use environment variable for cloud deployment, fallback to 300 for local
+const PORT = process.env.PORT || 300;
 
 // Create the addon manifest with SDK's built-in configuration
 const manifest = {
